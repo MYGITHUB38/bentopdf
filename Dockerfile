@@ -60,6 +60,19 @@ ARG VITE_FOOTER_TEXT
 ENV VITE_BRAND_NAME=$VITE_BRAND_NAME
 ENV VITE_BRAND_LOGO=$VITE_BRAND_LOGO
 ENV VITE_FOOTER_TEXT=$VITE_FOOTER_TEXT
+# Google Drive integration (all three are PUBLIC by design: Vite inlines them
+# into the browser bundle). Never pass an OAuth client secret here.
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GOOGLE_API_KEY
+ARG VITE_GOOGLE_APP_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_API_KEY=$VITE_GOOGLE_API_KEY
+ENV VITE_GOOGLE_APP_ID=$VITE_GOOGLE_APP_ID
+
+# AGPL-3.0 art. 13: a modified version offered over a network must point to ITS
+# OWN sources. Set this to your fork when you deploy a modified build.
+ARG VITE_SOURCE_URL
+ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 
 ARG DISABLE_TOOLS
 ENV DISABLE_TOOLS=$DISABLE_TOOLS
@@ -70,13 +83,26 @@ ENV DISABLE_TOOLS=$DISABLE_TOOLS
 ARG SITE_URL=https://www.bentopdf.com
 ENV SITE_URL=$SITE_URL
 
-ENV NODE_OPTIONS="--max-old-space-size=3072"
+# Heap ceiling for every node process of the build. Lower it on a small or
+# resource-capped host: the full build peaks hard and an abrupt host-level kill
+# leaves no OOM trace to diagnose.
+ARG NODE_HEAP_MB=3072
+ENV NODE_OPTIONS="--max-old-space-size=${NODE_HEAP_MB}"
+
+# Which npm script builds the site.
+#   build:with-docs (default) = full site + 2800 static i18n pages + VitePress docs
+#   build:selfhost            = app, blog, sitemap and security headers only;
+#                               drops the i18n page pre-render and the docs site,
+#                               which are SEO furniture for a private instance
+#                               (the UI is translated at runtime from
+#                               public/locales/*.json either way).
+ARG BUILD_TARGET=build:with-docs
 
 RUN --mount=type=secret,id=VITE_CORS_PROXY_URL,required=false \
     --mount=type=secret,id=VITE_CORS_PROXY_SECRET,required=false \
     VITE_CORS_PROXY_URL=$(cat /run/secrets/VITE_CORS_PROXY_URL 2>/dev/null || echo "") \
     VITE_CORS_PROXY_SECRET=$(cat /run/secrets/VITE_CORS_PROXY_SECRET 2>/dev/null || echo "") \
-    npm run build:with-docs
+    npm run "$BUILD_TARGET"
 
 # Production stage
 FROM quay.io/nginx/nginx-unprivileged:alpine-slim
@@ -99,6 +125,8 @@ COPY --chown=nginx:nginx --from=builder /app/dist /usr/share/nginx/html${BASE_UR
 COPY --chown=nginx:nginx nginx.conf /etc/nginx/nginx.conf
 COPY --chown=nginx:nginx --from=builder /app/security-headers.conf /etc/nginx/security-headers.conf
 COPY --chown=nginx:nginx --from=builder /app/security-headers-docs.conf /etc/nginx/security-headers-docs.conf
+COPY --chown=nginx:nginx --from=builder /app/security-headers-isolated.conf /etc/nginx/security-headers-isolated.conf
+COPY --chown=nginx:nginx --from=builder /app/nginx-isolated-location.conf /etc/nginx/nginx-isolated-location.conf
 COPY --chown=nginx:nginx --chmod=755 nginx-ipv6.sh /docker-entrypoint.d/99-disable-ipv6.sh
 COPY --chown=nginx:nginx --chmod=755 nginx-noindex.sh /docker-entrypoint.d/98-noindex.sh
 RUN mkdir -p /etc/nginx/tmp && chown -R nginx:nginx /etc/nginx/tmp

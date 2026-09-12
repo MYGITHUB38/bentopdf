@@ -1,0 +1,19 @@
+{
+  "_comment": "Tool pages that need SharedArrayBuffer, and therefore cross-origin isolation (COOP: same-origin + COEP). Single source of truth: read by src/js/config/cross-origin.ts at runtime and by scripts/generate-security-headers.mjs at build time. Adding a tool that loads LibreOffice WASM or otherwise touches SharedArrayBuffer means adding its id here.",
+  "pages": [
+    "excel-to-pdf",
+    "odg-to-pdf",
+    "odp-to-pdf",
+    "ods-to-pdf",
+    "odt-to-pdf",
+    "pages-to-pdf",
+    "pdf-to-tiff",
+    "powerpoint-to-pdf",
+    "pub-to-pdf",
+    "rtf-to-pdf",
+    "vsd-to-pdf",
+    "word-to-pdf",
+    "wpd-to-pdf",
+    "wps-to-pdf"
+  ]
+}

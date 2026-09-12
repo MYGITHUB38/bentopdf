@@ -10,8 +10,56 @@ import viteCompression from 'vite-plugin-compression';
 import handlebars from 'vite-plugin-handlebars';
 import { resolve } from 'path';
 import fs from 'fs';
+import isolatedPagesConfig from './src/js/config/cross-origin-isolated-pages.json';
+
 import { constants as zlibConstants } from 'zlib';
 import { createHash } from 'crypto';
+
+/**
+ * Serves COOP "same-origin" on the pages that need SharedArrayBuffer, and
+ * "same-origin-allow-popups" everywhere else -- exactly what nginx and Apache
+ * do in production (see scripts/generate-security-headers.mjs). Without this,
+ * the dev server and the deployed site disagree about cross-origin isolation
+ * and WASM threading works in only one of the two.
+ */
+function crossOriginIsolationPerPage(): Plugin {
+  const isolated = new Set<string>(isolatedPagesConfig.pages);
+
+  const middleware: Connect.NextHandleFunction = (req, res, next) => {
+    const pathname = (req.url || '').split('?')[0];
+    const page = pathname
+      .replace(/\.html$/, '')
+      .split('/')
+      .filter(Boolean)
+      .pop();
+    if (page && isolated.has(page)) {
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    } else {
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+      // No COEP here: it blocks any cross-origin iframe whose document sends
+      // none, and the Google Picker (docs.google.com) sends none.
+      res.removeHeader('Cross-Origin-Embedder-Policy');
+    }
+    next();
+  };
+
+  return {
+    name: 'bentopdf:cross-origin-isolation-per-page',
+    // Installed BEFORE Vite's internal middlewares on purpose. A post hook
+    // (`return () => ...`) would run after the static file handler, which has
+    // already ended the response for a .html request -- verified empirically,
+    // the header simply never appeared. Running first is safe because COOP is
+    // deliberately absent from `server.headers` / `preview.headers`, so the
+    // static handler has no COOP of its own to write over this one.
+    configureServer(server) {
+      server.middlewares.use(middleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(middleware);
+    },
+  };
+}
 
 function engineVersion(): string {
   try {
@@ -542,6 +590,7 @@ export default defineConfig(() => {
       format: 'es' as const,
     },
     plugins: [
+      crossOriginIsolationPerPage(),
       // basicSsl(),
       handlebars({
         partialDirectory: resolve(__dirname, 'src/partials'),
@@ -552,6 +601,11 @@ export default defineConfig(() => {
           brandLogo: process.env.VITE_BRAND_LOGO || '',
           footerText: process.env.VITE_FOOTER_TEXT || '',
           appVersion: process.env.npm_package_version || 'Unknown',
+          // AGPL-3.0 art. 13 : une version modifiee mise a disposition en
+          // reseau doit offrir SES sources, pas celles du projet amont.
+          sourceUrl:
+            process.env.VITE_SOURCE_URL ||
+            'https://github.com/alam00000/bentopdf',
         },
       }),
       languageRouterPlugin(),
@@ -624,15 +678,14 @@ export default defineConfig(() => {
         ignored: ['!**/node_modules/bentopdf-pdfium/**'],
       },
       headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
+        // Neither COOP nor COEP is declared here on purpose: Vite's static
+        // handler re-applies these headers after every middleware, so a value
+        // set here could not be overridden per page.
+        // crossOriginIsolationPerPage() owns both.
       },
     },
     preview: {
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
+      headers: {},
     },
     build: {
       rollupOptions: {

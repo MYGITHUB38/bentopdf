@@ -56,6 +56,19 @@ ARG VITE_FOOTER_TEXT
 ENV VITE_BRAND_NAME=$VITE_BRAND_NAME
 ENV VITE_BRAND_LOGO=$VITE_BRAND_LOGO
 ENV VITE_FOOTER_TEXT=$VITE_FOOTER_TEXT
+# Google Drive integration (all three are PUBLIC by design: Vite inlines them
+# into the browser bundle). Never pass an OAuth client secret here.
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GOOGLE_API_KEY
+ARG VITE_GOOGLE_APP_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_API_KEY=$VITE_GOOGLE_API_KEY
+ENV VITE_GOOGLE_APP_ID=$VITE_GOOGLE_APP_ID
+
+# AGPL-3.0 art. 13: a modified version offered over a network must point to ITS
+# OWN sources. Set this to your fork when you deploy a modified build.
+ARG VITE_SOURCE_URL
+ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 
 # Public-facing canonical site URL. See Dockerfile for details.
 ARG SITE_URL=https://www.bentopdf.com
@@ -88,6 +101,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html${BASE_URL%/}
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=builder /app/security-headers-docs.conf /etc/nginx/security-headers-docs.conf
+COPY --from=builder /app/security-headers-isolated.conf /etc/nginx/security-headers-isolated.conf
+COPY --from=builder /app/nginx-isolated-location.conf /etc/nginx/nginx-isolated-location.conf
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 nginx-noindex.sh /usr/local/bin/bentopdf-noindex.sh
 
