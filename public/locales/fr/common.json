@@ -69,6 +69,8 @@
     "pdfOrImages": "PDF ou images",
     "filesNeverLeave": "Vos fichiers restent sur votre appareil.",
     "addMore": "Ajouter d’autres fichiers",
+    "googleDrive": "Google Drive",
+    "downloadingFromDrive": "Téléchargement du/des fichier(s) depuis Google Drive...",
     "clearAll": "Tout effacer",
     "clearFiles": "Effacer les fichiers",
     "hints": {
@@ -385,5 +387,13 @@
     "heading": "Cet outil a été désactivé",
     "message": "Cet outil n'est pas disponible dans votre déploiement. Contactez votre administrateur pour plus d'informations.",
     "backHome": "Retour à l'accueil"
+  },
+  "security": {
+    "rejectedTitle": "Fichier bloqué par le contrôle de sécurité",
+    "rejectedIntro": "Ces fichiers n'ont pas été ouverts :",
+    "checking": "Vérification des fichiers...",
+    "driveTimeout": "La connexion à Google Drive a expiré.\nVérifiez qu'un bloqueur de pop-up ou la protection contre le suivi de votre navigateur ne bloque pas l'échange.",
+    "driveFileBlocked": "Contrôle de sécurité en échec sur {{name}} : {{reason}}",
+    "driveAppIdRequired": "Google Drive requiert un App ID. Renseignez VITE_GOOGLE_APP_ID (ou le champ App ID dans les Réglages) avec le numéro de votre projet Google Cloud, puis rechargez la page."
   }
 }

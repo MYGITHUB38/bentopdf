@@ -69,6 +69,8 @@
     "pdfOrImages": "PDFs or Images",
     "filesNeverLeave": "Your files never leave your device.",
     "addMore": "Add More Files",
+    "googleDrive": "Google Drive",
+    "downloadingFromDrive": "Downloading file(s) from Google Drive...",
     "clearAll": "Clear All",
     "clearFiles": "Clear Files",
     "hints": {
@@ -385,5 +387,13 @@
     "heading": "This tool has been disabled",
     "message": "This tool is not available in your deployment. Contact your administrator for more information.",
     "backHome": "Back to Home"
+  },
+  "security": {
+    "rejectedTitle": "File blocked by the security check",
+    "rejectedIntro": "These files were not opened:",
+    "checking": "Checking files...",
+    "driveTimeout": "The connection to Google Drive timed out.\nCheck whether a pop-up blocker or your browser's tracking protection is blocking the exchange.",
+    "driveFileBlocked": "Security check failed on {{name}}: {{reason}}",
+    "driveAppIdRequired": "Google Drive needs an App ID. Set VITE_GOOGLE_APP_ID (or fill the App ID field in Settings) with your Google Cloud project number, then reload."
   }
 }
