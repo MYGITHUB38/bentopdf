@@ -147,7 +147,57 @@
             respective privacy policies for your own peace of mind.
           </p>
 
-          <h2>5. Security</h2>
+          <h2>5. Google Drive Import (Optional)</h2>
+          <p>
+            This build offers an optional <strong>Google Drive</strong> import.
+            It is off until you use it, and it does not change where your files
+            are processed: everything still happens in your browser. What it
+            does change is worth stating plainly.
+          </p>
+          <ul>
+            <li>
+              When you choose <em>Google Drive</em>, you sign in with Google and
+              grant the
+              <code>https://www.googleapis.com/auth/drive.file</code>
+              permission. It covers <strong>only the files you pick</strong> in
+              Google's own file selector, not the rest of your Drive.
+            </li>
+            <li>
+              The files you pick are downloaded
+              <strong>from Google straight to your browser</strong>. They are
+              not sent to us; we operate no server that could receive them.
+            </li>
+            <li>
+              The access token is kept
+              <strong>for the life of the browser tab only</strong>, so you are
+              not asked to sign in again for every tool. It is discarded when
+              you close the tab, it is never stored permanently, and
+              <em>Disconnect</em> revokes it with Google straight away.
+            </li>
+            <li>
+              Your Google credentials (client ID, API key, app ID) are stored in
+              your browser's local storage so you do not have to retype them.
+              They are configuration, not personal data, and they never leave
+              your device.
+            </li>
+            <li>
+              You can revoke this access at any time from
+              <a
+                href="https://myaccount.google.com/permissions"
+                target="_blank"
+                rel="noopener noreferrer"
+                >your Google account permissions</a
+              >, or by choosing <em>Disconnect</em> in the app.
+            </li>
+          </ul>
+          <p>
+            Using Google Drive means your browser talks to Google, and Google's
+            own privacy policy applies to that exchange. If you would rather
+            keep everything on your machine, simply do not use this feature:
+            every tool works the same way with a local file.
+          </p>
+
+          <h2>6. Security</h2>
           <p>
             Since your files are never transmitted over the internet to our
             servers, you are protected from potential data breaches during
@@ -155,8 +205,14 @@
             your hands and protected by the security of your own computer and
             web browser.
           </p>
+          <p>
+            Files you open are checked before any tool touches them: the app
+            reads their actual binary signature rather than trusting the file
+            name, refuses executables, and rejects XML entity attacks and
+            compressed archives that would expand far beyond their stated size.
+          </p>
 
-          <h2>6. Children's Privacy</h2>
+          <h2>7. Children's Privacy</h2>
           <p>
             Our services are not directed at individuals under the age of 13. We
             do not knowingly collect any personal information from children. If
@@ -165,7 +221,7 @@
             information.
           </p>
 
-          <h2>7. Changes to This Privacy Policy</h2>
+          <h2>8. Changes to This Privacy Policy</h2>
           <p>
             We may update this Privacy Policy from time to time. We will notify
             you of any changes by posting the new policy on this page and
@@ -173,7 +229,7 @@
             review this Privacy Policy periodically for any changes.
           </p>
 
-          <h2>8. Contact Us</h2>
+          <h2>9. Contact Us</h2>
           <p>
             If you have any questions about this Privacy Policy, please contact
             us at
