@@ -135,12 +135,12 @@ export const hideAlert = () => {
 
 export const switchView = (view: string) => {
   if (view === 'grid') {
-    dom.gridView.classList.remove('hidden');
-    dom.toolInterface.classList.add('hidden');
+    dom.gridView?.classList.remove('hidden');
+    dom.toolInterface?.classList.add('hidden');
     // show hero and features and header
-    dom.heroSection.classList.remove('hidden');
-    dom.featuresSection.classList.remove('hidden');
-    dom.toolsHeader.classList.remove('hidden');
+    dom.heroSection?.classList.remove('hidden');
+    dom.featuresSection?.classList.remove('hidden');
+    dom.toolsHeader?.classList.remove('hidden');
     // show dividers
     dom.dividers.forEach((divider) => {
       divider.classList.remove('hidden');
@@ -152,11 +152,11 @@ export const switchView = (view: string) => {
 
     resetState();
   } else {
-    dom.gridView.classList.add('hidden');
-    dom.toolInterface.classList.remove('hidden');
-    dom.featuresSection.classList.add('hidden');
-    dom.heroSection.classList.add('hidden');
-    dom.toolsHeader.classList.add('hidden');
+    dom.gridView?.classList.add('hidden');
+    dom.toolInterface?.classList.remove('hidden');
+    dom.featuresSection?.classList.add('hidden');
+    dom.heroSection?.classList.add('hidden');
+    dom.toolsHeader?.classList.add('hidden');
     dom.dividers.forEach((divider) => {
       divider.classList.add('hidden');
     });
