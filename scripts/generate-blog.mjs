@@ -8,7 +8,14 @@ const __dirname = path.dirname(__filename);
 
 const POSTS_DIR = path.resolve(__dirname, '../blog/posts');
 const BLOG_DIR = path.resolve(__dirname, '../blog');
-const SITE_URL = 'https://www.bentopdf.com';
+// Honours SITE_URL like generate-sitemap.mjs and seo-audit.mjs do. Hardcoded,
+// it emitted bentopdf.com canonicals on the blog pages while every other page
+// followed the build's SITE_URL -- and the SEO audit failed the build on the
+// mismatch, which is exactly what it is there to catch.
+const SITE_URL = (process.env.SITE_URL || 'https://www.bentopdf.com').replace(
+  /\/+$/,
+  ''
+);
 const AUTHOR = {
   name: 'Alam',
   url: `${SITE_URL}/blog/author-alam`,
@@ -62,6 +69,26 @@ function formatDate(iso) {
   });
 }
 
+const DEFAULT_SITE_URL = 'https://www.bentopdf.com';
+
+/**
+ * Rewrites absolute default-host URLs in a hand-maintained page so they follow
+ * the build's SITE_URL. No-op when SITE_URL is the default, which keeps the
+ * committed file byte-identical on an ordinary build.
+ */
+function retargetStaticPage(filePath) {
+  if (SITE_URL === DEFAULT_SITE_URL) return;
+  if (!fs.existsSync(filePath)) return;
+  const original = fs.readFileSync(filePath, 'utf-8');
+  const updated = original.split(DEFAULT_SITE_URL).join(SITE_URL);
+  if (updated !== original) {
+    fs.writeFileSync(filePath, updated);
+    console.log(
+      `generate-blog: retargeted ${path.basename(filePath)} to ${SITE_URL}`
+    );
+  }
+}
+
 function parsePost(file) {
   const raw = fs.readFileSync(path.join(POSTS_DIR, file), 'utf-8');
   if (/[—–]/.test(raw)) {
@@ -69,7 +96,9 @@ function parsePost(file) {
       `${file}: contains an em or en dash, which the house style forbids`
     );
   }
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  // Tolère CRLF : .gitattributes normalise en LF, mais un fichier créé hors Git
+  // (ou extrait par un outil tiers) ne doit pas faire échouer tout le build.
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match) {
     throw new Error(`${file}: missing JSON frontmatter between --- markers`);
   }
@@ -413,6 +442,12 @@ function generate() {
     keep.add(`${post.slug}.html`);
   }
   fs.writeFileSync(path.join(BLOG_DIR, 'index.html'), renderIndex(posts));
+
+  // author-alam.html is hand-maintained (it is in `keep`), so its absolute URLs
+  // are written for the default host. Retarget them when the build declares a
+  // different SITE_URL, otherwise it is the one page in blog/ that contradicts
+  // every other, and seo-audit.mjs fails the build on it.
+  retargetStaticPage(path.join(BLOG_DIR, 'author-alam.html'));
 
   for (const entry of fs.readdirSync(BLOG_DIR)) {
     if (entry.endsWith('.html') && !keep.has(entry)) {

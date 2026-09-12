@@ -1,0 +1,25 @@
+# Normalisation des fins de ligne (constat 05 de l'audit 2026-09-11).
+# Sans cette déclaration, core.autocrlf=true extrait les fichiers en CRLF sous
+# Windows et les analyseurs qui attendent un LF strict échouent silencieusement
+# (scripts/generate-blog.mjs rejetait tout le frontmatter JSON des articles).
+* text=auto eol=lf
+
+# Fichiers dont le contenu binaire ne doit jamais être réécrit.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.wasm binary
+*.data binary
+*.gz binary
+*.zip binary
+*.mp4 binary
+*.webm binary
