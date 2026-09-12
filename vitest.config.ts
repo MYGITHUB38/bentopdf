@@ -2,6 +2,16 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
+  // Build-time globals injected by vite.config.ts `define`. Without them any
+  // module that (transitively) imports utils/disabled-tools.ts throws on import
+  // under Vitest, which is a test-harness gap, not a source defect.
+  define: {
+    __SIMPLE_MODE__: 'false',
+    __DISABLED_TOOLS__: '[]',
+    __DISABLED_EDITOR_CATEGORIES__: '[]',
+    __BRAND_NAME__: '"BentoPDF"',
+  },
+
   test: {
     // Enable global test APIs (describe, it, expect, etc.)
     globals: true,

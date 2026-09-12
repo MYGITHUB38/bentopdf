@@ -29,13 +29,52 @@ import {
   setStoredItem,
   removeStoredItem,
 } from './utils/safe-storage.js';
+import { initGoogleDrive } from './integrations/googleDrive.js';
+import { installFileSecurityGuard } from './security/fileGuard.js';
 declare const __BRAND_NAME__: string;
 
+// Installed synchronously, before any tool page can accept a file. The guard
+// listens in the capture phase, so it runs ahead of the per-page handlers
+// regardless of script order.
+installFileSecurityGuard();
+
+/**
+ * Shows a dismissible banner when translations could not be loaded. The page
+ * stays usable — it just displays raw keys — but the user is told why.
+ */
+function showTranslationFailureNotice(): void {
+  if (document.getElementById('i18n-failure-notice')) return;
+  const notice = document.createElement('div');
+  notice.id = 'i18n-failure-notice';
+  notice.setAttribute('role', 'status');
+  notice.className =
+    'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md rounded-lg border ' +
+    'border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 shadow-lg';
+  notice.textContent =
+    'Translations could not be loaded. Labels may appear as raw keys. ' +
+    'Reload the page, or check your network connection.';
+  document.body?.appendChild(notice);
+}
+
 const init = async () => {
-  await initI18n();
-  await loadRuntimeConfig();
-  injectLanguageSwitcher();
-  applyTranslations();
+  try {
+    await initI18n();
+    await loadRuntimeConfig();
+    injectLanguageSwitcher();
+    applyTranslations();
+  } catch (i18nErr) {
+    // Visible failure: without translations the interface shows raw keys, and a
+    // console warning nobody reads is not a report.
+    console.error('[BentoPDF] i18n/config initialization error:', i18nErr);
+    document.documentElement.dataset.i18nFailed = 'true';
+    showTranslationFailureNotice();
+  }
+
+  try {
+    initGoogleDrive();
+  } catch (driveErr) {
+    console.warn('[BentoPDF] Google Drive initialization error:', driveErr);
+  }
 
   if (isCurrentPageDisabled()) {
     document.title = t('disabledTool.title') || 'Tool Unavailable';
@@ -499,6 +538,7 @@ const init = async () => {
     });
 
     window.addEventListener('keydown', function (e) {
+      if (!e.key) return;
       const key = e.key.toLowerCase();
       const isMac = navigator.userAgent.toUpperCase().includes('MAC');
       const isCtrlK = e.ctrlKey && key === 'k';
@@ -1219,4 +1259,11 @@ const init = async () => {
   rewriteLinks();
 };
 
-window.addEventListener('load', init);
+// Robust execution: if DOM is already parsed/interactive, invoke immediately; otherwise on DOMContentLoaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    init();
+  });
+} else {
+  init();
+}

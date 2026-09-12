@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { XMLParser } from 'fast-xml-parser';
+import { inspectXmlSafety } from '../security/fileValidator.js';
 
 export interface XmlToPdfOptions {
   onProgress?: (percent: number, message: string) => void;
@@ -21,6 +22,13 @@ export async function convertXmlToPdf(
 
   onProgress?.(10, 'Reading XML file...');
   const rawXmlText = await file.text();
+
+  // Strict anti-XXE & entity bomb defense (Rule 01 & Hoffman Ch. 12/30)
+  const safetyCheck = inspectXmlSafety(rawXmlText);
+  if (!safetyCheck.safe) {
+    throw new Error(`Échec de sécurité XML : ${safetyCheck.reason}`);
+  }
+
   const xmlText = String(rawXmlText)
     .replace(/<!DOCTYPE[\s\S]*?>/gi, '')
     .replace(/<!ENTITY[\s\S]*?>/gi, '')
@@ -35,7 +43,7 @@ export async function convertXmlToPdf(
     parseTagValue: false,
     parseAttributeValue: false,
     trimValues: true,
-    processEntities: true,
+    processEntities: false, // Explicitly disable entity resolution (Anti-XXE & Billion Laughs)
     ignoreDeclaration: true,
     ignorePiTags: true,
   });
