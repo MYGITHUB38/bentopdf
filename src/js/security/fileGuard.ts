@@ -9,8 +9,8 @@
  * tool logic does.
  *
  * Design rules:
- *  - Fail OPEN. Any unexpected error lets the files through with a console
- *    warning. A guard that blocks everything on a bug is worse than no guard.
+ *  - Fail CLOSED. Any unexpected error blocks the files and alerts the user,
+ *    preventing uninspected files from reaching the parser engines.
  *  - Feature-detected. Without `DataTransfer` (and `DragEvent` for drops) the
  *    corresponding interceptor is not installed at all.
  *  - Re-entrant safe. The replayed event is a new object, tagged before dispatch
@@ -194,9 +194,16 @@ async function validateAndReplay(
     validFiles = result.validFiles;
     reportRejections(result.rejectedFiles);
   } catch (err) {
-    // Fail open: a broken guard must not make the application unusable.
-    console.warn('[FileGuard] Validation failed, letting files through:', err);
-    validFiles = files;
+    // Fail closed: an unexpected validator error must not pass uninspected files to the WASM parser.
+    console.error(
+      '[FileGuard] Unexpected error during validation, blocking files for safety:',
+      err
+    );
+    showAlert(
+      t('security.rejectedTitle'),
+      `${t('security.rejectedIntro')}\n• Internal error during security verification. Files blocked for safety.`
+    );
+    validFiles = [];
   } finally {
     hideLoader();
   }
