@@ -5,6 +5,7 @@ import {
   sanitizeFilename,
   validateFileSecurity,
   inspectArchiveSafety,
+  inspectEpubStructure,
   isExecutableBinary,
 } from '../js/security/fileValidator';
 import JSZip from 'jszip';
@@ -292,6 +293,137 @@ describe('File Security - Archive Inspection (Zip Slip & Zip Bomb)', () => {
 
     const check = await inspectArchiveSafety(zipBuffer);
     expect(check.safe).toBe(true);
+  });
+});
+
+describe('File Security - EPUB Structural Integrity (inspectEpubStructure)', () => {
+  const containerXml = `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+  function opfWithToc(tocHref: string | null): string {
+    const tocAttr = tocHref ? ' toc="ncx"' : '';
+    const ncxItem = tocHref
+      ? `<item id="ncx" href="${tocHref}" media-type="application/x-dtbncx+xml"/>`
+      : '';
+    return `<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <manifest>
+    <item id="chap1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    ${ncxItem}
+  </manifest>
+  <spine${tocAttr}>
+    <itemref idref="chap1"/>
+  </spine>
+</package>`;
+  }
+
+  it('accepts a well-formed EPUB whose NCX is present', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', opfWithToc('toc.ncx'));
+    zip.file('OPS/toc.ncx', '<ncx/>');
+    zip.file('OPS/chapter1.xhtml', '<html/>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts an EPUB3 whose spine declares no toc attribute (no NCX to check)', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', opfWithToc(null));
+    zip.file('OPS/chapter1.xhtml', '<html/>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(true);
+  });
+
+  it('decodes a percent-encoded NCX href before checking it exists (Calibre-style filenames)', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', opfWithToc('toc%20file.ncx'));
+    zip.file('OPS/toc file.ncx', '<ncx/>');
+    zip.file('OPS/chapter1.xhtml', '<html/>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects malformed XML in META-INF/container.xml', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', '<container><rootfiles>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/well-formed XML/i);
+  });
+
+  it('rejects malformed XML in the OPF package document', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', '<package><manifest>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/well-formed XML/i);
+  });
+
+  it('ignores archives that are not EPUBs (no META-INF/container.xml)', async () => {
+    const zip = new JSZip();
+    zip.file('image1.jpg', 'fake image data');
+    zip.file('image2.jpg', 'fake image data');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects an EPUB whose spine references a missing NCX (reproduces "cannot find entry OPS/toc.ncx")', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', opfWithToc('toc.ncx'));
+    zip.file('OPS/chapter1.xhtml', '<html/>');
+    // OPS/toc.ncx is intentionally omitted, reproducing the real production error.
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/table of contents/i);
+    expect(result.reason).toMatch(/OPS\/toc\.ncx/);
+  });
+
+  it('rejects an EPUB whose container.xml points to a missing package document', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    // OPS/content.opf is intentionally omitted.
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+    const result = await inspectEpubStructure(buffer);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toMatch(/package document/i);
+  });
+
+  it('flags a broken EPUB through the full validateFileSecurity flow used by epub-to-pdf uploads', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', containerXml);
+    zip.file('OPS/content.opf', opfWithToc('toc.ncx'));
+    zip.file('OPS/chapter1.xhtml', '<html/>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+    const file = new File([buffer], 'book.epub');
+
+    // fileGuard.ts intentionally passes no expectedType for epub-to-pdf uploads.
+    const res = await validateFileSecurity(file);
+    expect(res.valid).toBe(false);
+    expect(res.reason).toMatch(/table of contents/i);
   });
 });
 

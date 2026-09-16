@@ -554,7 +554,144 @@ export async function inspectArchiveSafety(
 }
 
 // ==========================================
-// 5. Master File Security Validator
+// 5. EPUB Structural Integrity (OPF / NCX)
+// ==========================================
+
+/**
+ * Resolves an OPF-relative href (manifest item, spine toc, ...) against the
+ * package document's own path inside the archive.
+ */
+function resolveEpubPath(opfPath: string, href: string): string {
+  if (href.startsWith('/')) return href.slice(1);
+  const baseDir = opfPath.includes('/')
+    ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1)
+    : '';
+  const parts: string[] = [];
+  for (const segment of (baseDir + href).split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') parts.pop();
+    else parts.push(segment);
+  }
+  return parts.join('/');
+}
+
+/**
+ * OPF manifest `href` values are IRIs (RFC 3986) and commonly percent-encode
+ * spaces or accented characters (Calibre does this routinely) while the zip
+ * entry itself is stored under the raw, decoded name. Left undecoded, a
+ * legitimate EPUB with e.g. `href="toc%20file.ncx"` would never match its
+ * real entry `toc file.ncx` and be rejected as broken.
+ */
+function decodeEpubHref(href: string): string {
+  try {
+    return decodeURIComponent(href);
+  } catch {
+    return href;
+  }
+}
+
+/**
+ * Verifies that an EPUB's package document (OPF) and the NCX table of
+ * contents it declares actually exist inside the archive.
+ *
+ * MuPDF's EPUB parser fails hard (FzErrorFormat, "cannot find entry ...")
+ * when `container.xml` or the OPF's `<spine toc="...">` reference a file
+ * that is missing from the zip -- a real, observed failure mode for EPUBs
+ * produced by tools that drop the NCX without cleaning up the reference.
+ * Catching it here, before the WASM engine runs, turns an opaque Python
+ * traceback into an actionable message.
+ *
+ * Archives without `META-INF/container.xml` are not EPUBs (plain ZIP, CBZ,
+ * Office documents, ...) and are left untouched.
+ */
+export async function inspectEpubStructure(
+  archiveData: ArrayBuffer | Uint8Array | Blob
+): Promise<{ valid: boolean; reason?: string }> {
+  try {
+    const zip = new JSZip();
+    const loaded = await zip.loadAsync(archiveData);
+    const entryExists = (path: string) =>
+      Object.prototype.hasOwnProperty.call(loaded.files, path) &&
+      !loaded.files[path].dir;
+
+    const containerEntry = loaded.files['META-INF/container.xml'];
+    if (!containerEntry || containerEntry.dir) {
+      return { valid: true };
+    }
+
+    const containerXml = await containerEntry.async('string');
+    const containerDoc = new DOMParser().parseFromString(
+      containerXml,
+      'application/xml'
+    );
+    if (containerDoc.getElementsByTagName('parsererror').length > 0) {
+      return {
+        valid: false,
+        reason: 'Invalid EPUB: META-INF/container.xml is not well-formed XML.',
+      };
+    }
+
+    const rootfileElements = Array.from(
+      containerDoc.getElementsByTagName('rootfile')
+    );
+    const rootfileEl =
+      rootfileElements.find(
+        (el) =>
+          el.getAttribute('media-type') === 'application/oebps-package+xml'
+      ) ?? rootfileElements[0];
+    const rootfilePath = rootfileEl?.getAttribute('full-path') ?? '';
+    if (!rootfilePath || !entryExists(rootfilePath)) {
+      return {
+        valid: false,
+        reason: `Invalid EPUB: container.xml references a package document ("${rootfilePath || 'unknown'}") that is missing from the archive.`,
+      };
+    }
+
+    const opfXml = await loaded.files[rootfilePath].async('string');
+    const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
+    if (opfDoc.getElementsByTagName('parsererror').length > 0) {
+      return {
+        valid: false,
+        reason: `Invalid EPUB: package document "${rootfilePath}" is not well-formed XML.`,
+      };
+    }
+
+    const tocId = opfDoc.getElementsByTagName('spine')[0]?.getAttribute('toc');
+    if (tocId) {
+      const tocHref = Array.from(opfDoc.getElementsByTagName('item'))
+        .find((el) => el.getAttribute('id') === tocId)
+        ?.getAttribute('href');
+
+      if (!tocHref) {
+        return {
+          valid: false,
+          reason: `Invalid EPUB: spine declares toc="${tocId}" but no manifest item with that id exists.`,
+        };
+      }
+
+      const resolvedTocPath = resolveEpubPath(
+        rootfilePath,
+        decodeEpubHref(tocHref)
+      );
+      if (!entryExists(resolvedTocPath)) {
+        return {
+          valid: false,
+          reason: `Invalid EPUB: table of contents "${resolvedTocPath}" is declared in the manifest but missing from the archive. Try re-exporting this EPUB (e.g. with Calibre) to regenerate a valid table of contents.`,
+        };
+      }
+    }
+
+    return { valid: true };
+  } catch (err: any) {
+    return {
+      valid: false,
+      reason: `Invalid EPUB: could not parse archive structure (${err.message || String(err)}).`,
+    };
+  }
+}
+
+// ==========================================
+// 6. Master File Security Validator
 // ==========================================
 
 export async function validateFileSecurity(
@@ -661,6 +798,16 @@ export async function validateFileSecurity(
           sanitizedFilename,
           detectedType: 'zip',
           reason: archiveCheck.reason,
+        };
+      }
+
+      const epubCheck = await inspectEpubStructure(buffer);
+      if (!epubCheck.valid) {
+        return {
+          valid: false,
+          sanitizedFilename,
+          detectedType: 'zip',
+          reason: epubCheck.reason,
         };
       }
     }
