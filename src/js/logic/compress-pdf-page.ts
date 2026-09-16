@@ -142,40 +142,61 @@ async function performPhotonCompression(
   } else {
     pdfJsDoc = await getPDFDocument({ data: arrayBuffer }).promise;
   }
-  const newPdfDoc = await PDFDocument.create();
-  const settings =
-    PHOTON_PRESETS[level as keyof typeof PHOTON_PRESETS] ||
-    PHOTON_PRESETS.balanced;
 
-  for (let i = 1; i <= pdfJsDoc.numPages; i++) {
-    const page = await pdfJsDoc.getPage(i);
-    const viewport = page.getViewport({ scale: settings.scale });
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
+  try {
+    const newPdfDoc = await PDFDocument.create();
+    const settings =
+      PHOTON_PRESETS[level as keyof typeof PHOTON_PRESETS] ||
+      PHOTON_PRESETS.balanced;
 
-    await page.render({ canvasContext: context, viewport, canvas: canvas })
-      .promise;
+    for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+      const page = await pdfJsDoc.getPage(i);
+      try {
+        const viewport = page.getViewport({ scale: settings.scale });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-    const jpegBlob = await new Promise<Blob>((resolve) =>
-      canvas.toBlob(
-        (blob) => resolve(blob as Blob),
-        'image/jpeg',
-        settings.quality
-      )
-    );
-    const jpegBytes = await jpegBlob.arrayBuffer();
-    const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
-    const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
-    newPage.drawImage(jpegImage, {
-      x: 0,
-      y: 0,
-      width: viewport.width,
-      height: viewport.height,
-    });
+        await page.render({ canvasContext: context, viewport, canvas: canvas })
+          .promise;
+
+        const jpegBlob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob(
+            (blob) => resolve(blob as Blob),
+            'image/jpeg',
+            settings.quality
+          )
+        );
+
+        // Immediate release of canvas buffer and memory
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+
+        const jpegBytes = await jpegBlob.arrayBuffer();
+        const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
+        const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+        newPage.drawImage(jpegImage, {
+          x: 0,
+          y: 0,
+          width: viewport.width,
+          height: viewport.height,
+        });
+      } finally {
+        page.cleanup();
+      }
+    }
+    return await newPdfDoc.save();
+  } finally {
+    try {
+      pdfJsDoc.cleanup();
+      await pdfJsDoc.destroy();
+    } catch {
+      // Ignore PDF.js disposal errors
+    }
   }
-  return await newPdfDoc.save();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

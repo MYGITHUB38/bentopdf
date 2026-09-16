@@ -115,47 +115,61 @@ export async function performPhotonCompression(
   level: string
 ): Promise<Uint8Array> {
   const pdfJsDoc = await getPDFDocument({ data: arrayBuffer }).promise;
-  const newPdfDoc = await PDFDocument.create();
-  const settings =
-    PHOTON_PRESETS[level as keyof typeof PHOTON_PRESETS] ||
-    PHOTON_PRESETS.balanced;
+  try {
+    const newPdfDoc = await PDFDocument.create();
+    const settings =
+      PHOTON_PRESETS[level as keyof typeof PHOTON_PRESETS] ||
+      PHOTON_PRESETS.balanced;
 
-  for (let i = 1; i <= pdfJsDoc.numPages; i++) {
-    const page = await pdfJsDoc.getPage(i);
-    const viewport = page.getViewport({ scale: settings.scale });
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Failed to create canvas context');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
+    for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+      const page = await pdfJsDoc.getPage(i);
+      try {
+        const viewport = page.getViewport({ scale: settings.scale });
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Failed to create canvas context');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-    await page.render({ canvasContext: context, viewport, canvas: canvas })
-      .promise;
+        await page.render({ canvasContext: context, viewport, canvas: canvas })
+          .promise;
 
-    const jpegBlob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Failed to create JPEG blob'));
-        },
-        'image/jpeg',
-        settings.quality
-      )
-    );
+        const jpegBlob = await new Promise<Blob>((resolve, reject) =>
+          canvas.toBlob(
+            (blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error('Failed to create JPEG blob'));
+            },
+            'image/jpeg',
+            settings.quality
+          )
+        );
 
-    // Release canvas memory
-    canvas.width = 0;
-    canvas.height = 0;
+        // Immediate release of canvas buffer and memory to mitigate DoS/OOM
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
 
-    const jpegBytes = await jpegBlob.arrayBuffer();
-    const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
-    const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
-    newPage.drawImage(jpegImage, {
-      x: 0,
-      y: 0,
-      width: viewport.width,
-      height: viewport.height,
-    });
+        const jpegBytes = await jpegBlob.arrayBuffer();
+        const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
+        const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+        newPage.drawImage(jpegImage, {
+          x: 0,
+          y: 0,
+          width: viewport.width,
+          height: viewport.height,
+        });
+      } finally {
+        page.cleanup();
+      }
+    }
+    return await newPdfDoc.save();
+  } finally {
+    try {
+      pdfJsDoc.cleanup();
+      await pdfJsDoc.destroy();
+    } catch {
+      // Ignore PDF.js disposal errors
+    }
   }
-  return await newPdfDoc.save();
 }
